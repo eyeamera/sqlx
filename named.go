@@ -231,25 +231,36 @@ func fixBound(bound string, loop int) string {
 // bindArray binds a named parameter query with fields from an array or slice of
 // structs argument.
 func bindArray(bindType int, query string, arg interface{}, m *reflectx.Mapper) (string, []interface{}, error) {
-	bound, names, err := compileNamedQuery([]byte(query), bindType)
-	if err != nil {
-		return "", []interface{}{}, err
-	}
 	arrayValue := reflect.ValueOf(arg)
 	arrayLen := arrayValue.Len()
 	if arrayLen == 0 {
 		return "", []interface{}{}, fmt.Errorf("length of array is 0: %#v", arg)
 	}
+
+	// If there's more than one item in the array, build the query to duplicate the named args
+	// arrayLen times.
+	if arrayLen > 1 {
+		query = fixBound(query, arrayLen)
+	}
+
+	// Compile the query, returning a bound query and a list of named args.
+	// Note: names will be the length of the names in the original query * arrayLen.
+	bound, names, err := compileNamedQuery([]byte(query), bindType)
+	if err != nil {
+		return "", []interface{}{}, err
+	}
+
+	// Take a slice of the unique names
+	argNames := names[0 : len(names)/arrayLen]
+
+	// Build an argument list
 	var arglist []interface{}
 	for i := 0; i < arrayLen; i++ {
-		elemArglist, err := bindArgs(names, arrayValue.Index(i).Interface(), m)
+		elemArglist, err := bindArgs(argNames, arrayValue.Index(i).Interface(), m)
 		if err != nil {
 			return "", []interface{}{}, err
 		}
 		arglist = append(arglist, elemArglist...)
-	}
-	if arrayLen > 1 {
-		bound = fixBound(bound, arrayLen)
 	}
 	return bound, arglist, nil
 }

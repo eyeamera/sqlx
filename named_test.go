@@ -242,3 +242,69 @@ func TestNamedQueries(t *testing.T) {
 
 	})
 }
+
+func TestNamedBulkInsert(t *testing.T) {
+	RunWithSchema(defaultSchema, t, func(db *DB, t *testing.T) {
+		loadDefaultFixture(db, t)
+		test := Test{t}
+		var err error
+
+		// Func to test person is retrievable and inserted with all fields
+		assertPersonInserted := func(t *testing.T, p Person) {
+			dbP := Person{}
+			db.Get(&dbP, db.Rebind("SELECT * FROM person WHERE email=?"), p.Email)
+			if dbP.Email != p.Email {
+				t.Errorf("expected %s, got %s", p.Email, dbP.Email)
+			}
+
+			if dbP.FirstName != p.FirstName {
+				t.Errorf("expected %s, got %s", p.FirstName, dbP.FirstName)
+			}
+
+			if dbP.LastName != p.LastName {
+				t.Errorf("expected %s, got %s", p.LastName, dbP.LastName)
+			}
+		}
+
+		q := `
+			INSERT INTO person (first_name, last_name, email)
+			VALUES (:first_name, :last_name, :email)
+		`
+
+		js := Person{
+			FirstName: "Julien",
+			LastName:  "Savea",
+			Email:     "jsavea@ab.co.nz",
+		}
+
+		sl := Person{
+			FirstName: "Steven",
+			LastName:  "Luatua",
+			Email:     "sluatua@ab.co.nz",
+		}
+
+		_, err = db.NamedExec(q, []Person{js, sl})
+		test.Error(err)
+
+		assertPersonInserted(t, js)
+		assertPersonInserted(t, sl)
+
+		// Test single insert
+		sg := Person{
+			FirstName: "Saul",
+			LastName:  "Goodman",
+			Email:     "saul@goodman.co",
+		}
+
+		_, err = db.NamedExec(q, []Person{sg})
+		test.Error(err)
+
+		assertPersonInserted(t, sg)
+
+		// Test empty slice
+		_, err = db.NamedExec(q, []Person{})
+		if err == nil {
+			test.Error(err)
+		}
+	})
+}
